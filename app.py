@@ -1,5 +1,6 @@
 import pandas as pd
-import numpy as np
+import re
+import streamlit as st
 
 # Sem můžeš zkopírovat všechny své sekvence
 sequences = [
@@ -50,24 +51,39 @@ sequences = [
 "NO.BP05755901to-bisNO.BP05755950"	
 ]
 
-def generate_serial_numbers(seq_list):
-    # Vytažení počátečních a koncových čísel pomocí stringových operací
-    parsed = [(int(s.split('to-bis')[0].replace('NO.BP', '')), 
-               int(s.split('to-bis')[1].replace('NO.BP', ''))) for s in seq_list]
+def generate_serial_numbers_safe(seq_list):
+    all_serials = []
     
-    # Vektorizované vytvoření všech čísel pro maximální výkon
-    all_nums = np.concatenate([np.arange(start, end + 1) for start, end in parsed])
-    
-    # Zformátování čísel zpět na délku 8 znaků a přidání prefixu BP
-    formatted = ["BP" + str(num).zfill(8) for num in all_nums]
-    return formatted
+    for s in seq_list:
+        # Bezpečné vytažení všech čísel, která následují za 'BP' pomocí RegEx
+        matches = re.findall(r'BP(\d+)', s)
+        
+        if len(matches) == 2:
+            start = int(matches[0])
+            end = int(matches[1])
+            
+            # Bezpečnostní pojistka proti překlepům ve vstupních datech
+            # (Zabrání pádu aplikace, pokud je rozdíl nesmyslně velký)
+            if end - start > 10000:
+                st.error(f"⚠️ Přeskočeno: Sekvence {s} má podezřele velký rozsah ({end - start} položek). Zkontroluj překlepy.")
+                continue
+            if end < start:
+                st.warning(f"⚠️ Přeskočeno: V sekvenci {s} je počáteční číslo větší než koncové.")
+                continue
+                
+            # Použití standardního generátoru (šetrnější na paměť než numpy.arange)
+            for num in range(start, end + 1):
+                all_serials.append(f"BP{str(num).zfill(8)}")
+        else:
+            if s.strip(): # Ignoruje prázdné řádky
+                st.warning(f"⚠️ Řádek '{s}' nemá správný formát a byl přeskočen.")
+            
+    return all_serials
 
-# Vytvoření DataFrame
-all_serials = generate_serial_numbers(sequences)
+# Generování a vytvoření DataFrame
+all_serials = generate_serial_numbers_safe(sequences)
 df_serials = pd.DataFrame({"Serial_Number": all_serials})
 
-print(f"Úspěšně vygenerováno {len(df_serials)} sériových čísel.")
-
-# Možnost uložení rovnou do Excelu nebo schránky
-# df_serials.to_excel("rozepsane_palety.xlsx", index=False)
-# df_serials.to_clipboard(index=False)
+# Výpis do Streamlit aplikace
+st.success(f"Úspěšně vygenerováno {len(df_serials)} sériových čísel.")
+st.dataframe(df_serials)
