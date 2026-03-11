@@ -2,7 +2,7 @@ import pandas as pd
 import re
 import streamlit as st
 
-# Seznam sekvencí (přidány čárky na konec každého řádku)
+# Tvoje zdrojová data
 sequences = [
     "NO.BP05757001to-bisNO.BP05758000",
     "NO.BP05756001to-bisNO.BP05757000",
@@ -43,38 +43,45 @@ sequences = [
     "NO.BP05755901to-bisNO.BP05755950"
 ]
 
-def generate_serial_numbers_safe(seq_list):
-    all_serials = []
+def generate_serial_columns_safe(seq_list):
+    data_dict = {}
     
     for s in seq_list:
-        # Bezpečné vytažení všech čísel, která následují za 'BP' pomocí RegEx
         matches = re.findall(r'BP(\d+)', s)
         
         if len(matches) == 2:
             start = int(matches[0])
             end = int(matches[1])
             
-            # Bezpečnostní pojistka proti překlepům ve vstupních datech
             if end - start > 10000:
-                st.error(f"⚠️ Přeskočeno: Sekvence {s} má podezřele velký rozsah ({end - start} položek). Zkontroluj překlepy.")
+                st.error(f"⚠️ Přeskočeno: Sekvence {s} má podezřele velký rozsah.")
                 continue
             if end < start:
                 st.warning(f"⚠️ Přeskočeno: V sekvenci {s} je počáteční číslo větší než koncové.")
                 continue
                 
-            # Použití standardního generátoru (šetrnější na paměť)
-            for num in range(start, end + 1):
-                all_serials.append(f"BP{str(num).zfill(8)}")
-        else:
-            if s.strip(): # Ignoruje prázdné řádky
-                st.warning(f"⚠️ Řádek '{s}' nemá správný formát a byl přeskočen.")
+            # Zápis čísel pro daný sloupec
+            col_data = [f"BP{str(num).zfill(8)}" for num in range(start, end + 1)]
             
-    return all_serials
+            # Název sloupce bude rovnou původní název sekvence (očistíme ho od balastu pro lepší čitelnost)
+            col_name = s.replace("NO.", "").replace("to-bis", " - ")
+            data_dict[col_name] = col_data
+            
+        else:
+            if s.strip():
+                st.warning(f"⚠️ Řádek '{s}' nemá správný formát a byl přeskočen.")
+                
+    return data_dict
 
-# Generování a vytvoření DataFrame
-all_serials = generate_serial_numbers_safe(sequences)
-df_serials = pd.DataFrame({"Serial_Number": all_serials})
+# 1. Vygenerujeme data do slovníku, kde každý klíč je název sloupce a hodnota je seznam čísel
+data_columns = generate_serial_columns_safe(sequences)
 
-# Výpis do Streamlit aplikace
-st.success(f"Úspěšně vygenerováno {len(df_serials)} sériových čísel.")
-st.dataframe(df_serials)
+# 2. Vytvoříme tabulku - 'orient=index' a 'transpose()' zajistí, že se kratší sloupce automaticky zarovnají
+df_serials = pd.DataFrame.from_dict(data_columns, orient='index').transpose()
+
+# 3. Místo ošklivých 'NaN' (Not a Number) vložíme prázdné znaky u těch sekvencí, co mají jen 50 kusů
+df_serials = df_serials.fillna("")
+
+# 4. Výpis do aplikace se skrytým číslováním řádků
+st.success(f"Úspěšně vygenerováno {len(data_columns)} sloupců.")
+st.dataframe(df_serials, hide_index=True)
